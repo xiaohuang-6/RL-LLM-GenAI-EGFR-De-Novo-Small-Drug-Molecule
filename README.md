@@ -1,141 +1,155 @@
 # EGFR Generative Pipeline (ChemBERTa + RL)
 
-This repository organizes a complete, scriptable pipeline for EGFR-focused de novo small-molecule generation, RL fine-tuning with a composite reward (potency, QED, SA, novelty), and docking-based validation.
+![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg) ![ChemBERTa](https://img.shields.io/badge/model-ChemBERTa-success.svg) ![AutoDock Vina](https://img.shields.io/badge/docking-AutoDock%20Vina-orange.svg) ![License](https://img.shields.io/badge/license-MIT-lightgrey.svg)
 
-The code is modular: each stage can be run independently. Where network or heavy dependencies are required (e.g., Hugging Face model downloads, RDKit, docking binaries), the scripts assume a properly configured environment. Placeholders are provided for data, models, and figures.
+**Design potent small molecules against EGFR end-to-end — from data curation, ChemBERTa pretraining, RL policy optimisation, to AutoDock Vina validation.**
 
-## Directory Layout
+> This project packages the workflow our team uses to bootstrap EGFR-focused molecule generation experiments. Everything is scriptable, reproducible, and ready for scale — no manual notebooks required.
 
-- `scripts/`
-  - `data_download_and_clean.py`: Download EGFR data from ChEMBL, clean, and export `all_egfr_ic50_data_cleaned.csv` and SMILES splits.
-  - `split_dataset.py`: Split a cleaned CSV into train/valid/test SMILES lists.
-  - `model_utils.py`: Load/save ChemBERTa tokenizer and model utilities.
-  - `finetune_mlm.py`: Masked language modeling fine-tune for ChemBERTa on EGFR SMILES.
-  - `train_qsar_rf.py`: Train RF (Morgan fingerprints → pIC50) and save `egfr_rf_qsar.pkl`.
-  - `rl_finetune.py`: RL fine-tune with composite reward (potency, QED, SA, novelty).
-  - `generate_molecules.py`: Sample molecules from (RL-)tuned model, deduplicate, validate, and save.
-  - `prepare_3d_ligands.py`: Optional helper to embed SMILES to 3D (SDF) and export to PDBQT (requires OpenBabel/MGLTools).
-  - `analyze_results.py`: Aggregate stats (validity/uniqueness/novelty/diversity) and plot distributions.
-- `docking/`
-  - `docking.sh`: Loops for AutoDock Vina docking on original and generated ligands.
-  - `EXTRACT.py`: Parse vina text logs into a CSV (`docking_scores.csv`).
-- `data/`
-  - `all_egfr_ic50_data_cleaned.csv` (symlink or copy from project root; see below)
-  - `egfr_train.txt`, `egfr_valid.txt`, `egfr_test.txt` (SMILES lists).
-- `models/`
-  - `chemberta_prior/` (downloaded or cached pretrained prior).
-  - `chemberta_mlm_ft/` (MLM fine-tuned checkpoint).
-  - `chemberta_rl_ft/` (RL fine-tuned checkpoint).
-  - `egfr_rf_qsar.pkl` (RF oracle; placeholder until trained).
-- `ligands/`
-  - `original_ligand_3d/` (pdbqt files for reference/top EGFR ligands; keep outputs here).
-  - `generated_ligand_3d/` (pdbqt files for de novo molecules; keep outputs here).
-- `results/`
-  - Generated SMILES, plots, docking tables.
-- `figures/`
-  - Project diagrams/plots (placeholders included).
+---
 
-## Environment
+## Table of Contents
+- [Highlights](#highlights)
+- [Why EGFR?](#why-egfr)
+- [Pipeline Overview](#pipeline-overview)
+- [Project Layout](#project-layout)
+- [Getting Started](#getting-started)
+- [End-to-End Runbook](#end-to-end-runbook)
+- [Result Highlights](#result-highlights)
+- [Troubleshooting & Tips](#troubleshooting--tips)
+- [Roadmap](#roadmap)
+- [Citations](#citations)
 
-- Python 3.9+
-- Packages: see `requirements.txt`
-- External tools:
-  - AutoDock Vina 1.2.7+ (binary on PATH or in project root)
-  - OpenBabel (optional, for PDBQT prep) and/or MGLTools scripts (`prepare_ligand4.py`)
-  - RDKit (must be installed per OS instructions)
+## Highlights
+- **Modular scripts** for every stage: data prep, ChemBERTa MLM fine-tuning, RL policy optimisation, molecule sampling, analytics, and docking.
+- **Composite reward RL** balances potency (RF QSAR oracle), drug-likeness (QED), synthetic accessibility, and novelty.
+- **Reproducible docking loop** with AutoDock Vina 1.2.7 and log extraction utilities to benchmark generated ligands.
+- **Figure-ready outputs** (plots, tables, PDFs) for reporting progress to collaborators or investors.
+- **Offline-first design** — cache Hugging Face checkpoints, run without internet, and keep sensitive data on-prem.
 
-Install requirements (CPU example):
+## Why EGFR?
+Epidermal Growth Factor Receptor (EGFR) is a clinically validated oncology target with rich public assay data and structural information. This repository focuses on EGFR to:
+- Demonstrate how large chemical language models can be specialised via transfer learning.
+- Provide a reference RL environment for medicinal chemistry reward shaping.
+- Offer docking-ready assets (receptor, ligands) for rapid in-silico validation.
 
+## Pipeline Overview
+| Stage | Goal | Script | Key Outputs |
+| --- | --- | --- | --- |
+| 1. Data Curation | Download + clean EGFR bioactivity records | `scripts/data_download_and_clean.py` | `all_egfr_ic50_data_cleaned.csv` |
+| 2. Train/Valid/Test Splits | Balanced SMILES splits | `scripts/split_dataset.py` | `data/egfr_{train,valid,test}.txt` |
+| 3. MLM Fine-Tuning | Specialise ChemBERTa on EGFR chemistry | `scripts/finetune_mlm.py` | `models/chemberta_mlm_ft/` |
+| 4. QSAR Oracle | Learn potency scoring function | `scripts/train_qsar_rf.py` | `models/egfr_rf_qsar.pkl` |
+| 5. RL Optimisation | Optimise molecule policy with composite reward | `scripts/rl_finetune.py` | `models/chemberta_rl_ft/` |
+| 6. Molecule Generation | Sample, deduplicate, validate SMILES | `scripts/generate_molecules.py` | `results/generated_*.txt` |
+| 7. 3D Prep | Optional: embed + convert to PDBQT | `scripts/prepare_3d_ligands.py` | `ligands/*/` |
+| 8. Docking & Analysis | Score vs. receptor, aggregate metrics | `docking/docking.sh`, `docking/EXTRACT.py`, `scripts/analyze_results.py` | `results/docking_scores.csv`, plots |
+
+## Project Layout
+```bash
+RL-LLM-GenAI-EGFR-De-Novo-Small-Drug-Molecule/
+├── scripts/                # Reproducible CLI entry points
+├── data/                   # Cleaned CSV + SMILES splits (mount or copy)
+├── models/                 # Prior, MLM, and RL checkpoints
+├── docking/                # AutoDock Vina launcher + log parser
+├── ligands/                # PDBQT inputs for docking runs
+├── results/                # Generated SMILES, docking tables, plots
+├── figures/                # Project diagrams / publication assets
+└── README.md               # You are here
 ```
+
+## Getting Started
+**Requirements**
+- Python 3.9+
+- `pip install -r requirements.txt`
+- External: AutoDock Vina ≥1.2.7, RDKit, (optional) OpenBabel or MGLTools for ligand prep.
+
+**Environment Bootstrap**
+```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Quick Start
+If you plan to run offline, download `seyonec/ChemBERTa-zinc-base-v1` ahead of time and point scripts to `models/chemberta_prior/`.
 
-1) Data (if you already have a cleaned CSV):
-- Place `all_egfr_ic50_data_cleaned.csv` at project root or copy into `egfr_pipeline/data/`.
-- Create SMILES splits:
-```
-python scripts/split_dataset.py \
-  --input data/all_egfr_ic50_data_cleaned.csv \
-  --smiles_col canonical_smiles --label_col pIC50 \
-  --out_prefix data/egfr
-```
-This writes `egfr_train.txt`, `egfr_valid.txt`, `egfr_test.txt` into `data/`.
+## End-to-End Runbook
+1. **Prep the data**
+   ```bash
+   python scripts/data_download_and_clean.py --out data/all_egfr_ic50_data_cleaned.csv
+   python scripts/split_dataset.py \
+       --input data/all_egfr_ic50_data_cleaned.csv \
+       --smiles_col canonical_smiles --label_col pIC50 \
+       --out_prefix data/egfr
+   ```
+2. **Fine-tune the prior**
+   ```bash
+   python scripts/finetune_mlm.py \
+       --train data/egfr_train.txt --valid data/egfr_valid.txt \
+       --out_dir models/chemberta_mlm_ft
+   ```
+3. **Train the potency oracle**
+   ```bash
+   python scripts/train_qsar_rf.py \
+       --input data/all_egfr_ic50_data_cleaned.csv \
+       --smiles_col canonical_smiles --label_col pIC50 \
+       --out models/egfr_rf_qsar.pkl
+   ```
+4. **Reinforcement learning optimisation**
+   ```bash
+   python scripts/rl_finetune.py \
+       --train data/egfr_train.txt --valid data/egfr_valid.txt \
+       --rf_model models/egfr_rf_qsar.pkl \
+       --out_dir models/chemberta_rl_ft
+   ```
+5. **Sample molecules & prep for docking**
+   ```bash
+   python scripts/generate_molecules.py \
+       --model models/chemberta_rl_ft --num 1000 \
+       --out_smiles results/generated_1000.txt
 
-2) Download/load prior model:
-- By default uses `seyonec/ChemBERTa-zinc-base-v1`. The scripts can run offline if the model/tokenizer are cached locally (set `--model_name_or_path models/chemberta_prior`).
+   python scripts/prepare_3d_ligands.py \
+       --input results/generated_1000.txt \
+       --out_dir ligands/generated_ligand_3d
+   ```
+6. **Dock & analyse**
+   ```bash
+   bash docking/docking.sh
+   python docking/EXTRACT.py \
+       --dirs ligands/original_ligand_3d ligands/generated_ligand_3d \
+       --out results/docking_scores.csv
+   python scripts/analyze_results.py \
+       --docking_csv results/docking_scores.csv \
+       --out_dir results
+   ```
 
-3) MLM fine-tune ChemBERTa:
-```
-python scripts/finetune_mlm.py \
-  --train data/egfr_train.txt --valid data/egfr_valid.txt \
-  --out_dir models/chemberta_mlm_ft
-```
+## Result Highlights
+![RL vs Baseline](../../rl_vs_baseline.png)
 
-4) QSAR oracle (Random Forest):
-```
-python scripts/train_qsar_rf.py \
-  --input data/all_egfr_ic50_data_cleaned.csv \
-  --smiles_col canonical_smiles --label_col pIC50 \
-  --out models/egfr_rf_qsar.pkl
-```
+![Library Quality Metrics](../../library_quality_metrics.png)
 
-5) RL fine-tune with composite reward:
-```
-python scripts/rl_finetune.py \
-  --train data/egfr_train.txt --valid data/egfr_valid.txt \
-  --rf_model models/egfr_rf_qsar.pkl \
-  --out_dir models/chemberta_rl_ft
-```
+These plots are generated directly from `scripts/analyze_results.py` to quantify reward improvements (pIC50, QED, SA) and diversity metrics post-RL. Additional figures live in `figures/` for slide-ready storytelling.
 
-6) Generate molecules (100 new):
-```
-python scripts/generate_molecules.py \
-  --model models/chemberta_rl_ft --num 100 \
-  --out_smiles results/generated_100.txt
-```
+## Troubleshooting & Tips
+- **RDKit installation** varies by OS; follow the official docs linked in `requirements.txt` comments.
+- **Docking grid**: update grid box coordinates in `docking/docking.sh` to match your receptor preparation.
+- **Checkpoint hygiene**: keep prior, MLM, and RL checkpoints separate — this makes ablations painless.
+- **Offline workflow**: populate `models/chemberta_prior/` with a local copy of ChemBERTa to avoid download prompts.
 
-7) Prepare 3D and PDBQT (optional helper):
-```
-python scripts/prepare_3d_ligands.py \
-  --input results/generated_100.txt \
-  --out_dir ligands/generated_ligand_3d
-```
-Repeat for your original/reference ligands into `ligands/original_ligand_3d`.
+## Roadmap
+- [ ] Integrate diffusion-based generative baselines for head-to-head benchmarking.
+- [ ] Add GPU-accelerated docking via DiffDock or Gnina.
+- [ ] Provide wandb/MLflow logging hooks for long-running experiments.
+- [ ] Ship a lightweight Streamlit app for medicinal chemist review.
 
-8) Docking with Vina:
-- Place receptor `1M17_clean.pdbqt` into project root or `docking/`.
-- Adjust paths in `docking/docking.sh` if needed; then run:
-```
-bash docking/docking.sh
-```
+Contributions via issues or PRs are warmly welcomed — please share what dataset or receptor variants you are targeting.
 
-9) Extract docking scores:
-```
-python docking/EXTRACT.py \
-  --dirs ligands/original_ligand_3d ligands/generated_ligand_3d \
-  --out results/docking_scores.csv
-```
+## Citations
+- Ahmad, et al. **ChemBERTa: Large-Scale Self-Supervised Pretraining for Molecular Property Prediction** (2022).
+- Landrum, G. **RDKit: Open-source cheminformatics** (2025).
+- Eberhardt, et al. **AutoDock Vina 1.2.0: New Docking Methodologies** (2021).
+- Stamos, et al. **Structure of the EGFR kinase domain** (2002).
 
-10) Analyze results:
-```
-python scripts/analyze_results.py \
-  --docking_csv results/docking_scores.csv \
-  --out_dir results
-```
+---
 
-## Notes
-
-- Placeholders provided: `models/egfr_rf_qsar.pkl` (empty until trained), `figures/` and `.gitkeep` files, empty ligand folders. Replace with real outputs after running the pipeline.
-- If you are fully offline, download the Hugging Face model in advance or provide a local path via `--model_name_or_path`.
-- Docking requires prepared PDBQT ligands and receptor; ensure correct center and box parameters for Vina.
-
-## References
-- ChemBERTa: Ahmad et al., 2022.
-- RDKit: Landrum, 2025.
-- AutoDock Vina 1.2.7: Eberhardt et al., 2021.
-- EGFR PDB 1M17: Stamos et al., 2002.
-
+If this workflow accelerates your EGFR project, consider starring ⭐ the repository and letting us know what breakthroughs you unlock!
