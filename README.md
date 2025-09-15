@@ -124,11 +124,9 @@ If you plan to run offline, download `seyonec/ChemBERTa-zinc-base-v1` ahead of t
    ```
 
 ## Result Highlights
-![RL vs Baseline](../../rl_vs_baseline.png)
+![Docking Score Distribution](figures/docking_score_distribution.pdf)
 
-![Library Quality Metrics](../../library_quality_metrics.png)
-
-These plots are generated directly from `scripts/analyze_results.py` to quantify reward improvements (pIC50, QED, SA) and diversity metrics post-RL. Additional figures live in `figures/` for slide-ready storytelling.
+The plot is generated directly from `scripts/analyze_results.py` to provide docking score distribution (RL vs Baseline). Additional figures live in `figures/` for slide-ready storytelling.
 
 ## Troubleshooting & Tips
 - **RDKit installation** varies by OS; follow the official docs linked in `requirements.txt` comments.
