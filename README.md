@@ -124,7 +124,7 @@ If you plan to run offline, download `seyonec/ChemBERTa-zinc-base-v1` ahead of t
    ```
 
 ## Result Highlights
-![Docking Score Distribution](figures/docking_score_distribution.pdf)
+![Docking Score Distribution](figures/docking_score_distribution.png)
 
 The plot is generated directly from `scripts/analyze_results.py` to provide docking score distribution (RL vs Baseline). Additional figures live in `figures/` for slide-ready storytelling.
 
